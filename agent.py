@@ -1,0 +1,61 @@
+import os
+import logging
+from dotenv import load_dotenv
+
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    WorkerOptions,
+    cli,
+)
+from livekit.plugins import sarvam
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("voice-agent")
+
+
+class TeluguVoiceAgent(Agent):
+    def __init__(self):
+        super().__init__(
+            instructions="You are Bhavik, a Telugu voice assistant. Always respond in Telugu in a friendly way."
+        )
+
+        # Sarvam STT
+        self.stt = sarvam.STT(
+            api_key=os.getenv("SARVAM_API_KEY"),
+            language="te-IN",
+        )
+
+        # Sarvam TTS
+        self.tts = sarvam.TTS(
+            api_key=os.getenv("SARVAM_API_KEY"),
+            voice="telugu_female",
+        )
+
+
+async def entrypoint(ctx: JobContext):
+    logger.info(f"🔥 Job started for room: {ctx.room.name}")
+
+    agent = TeluguVoiceAgent()
+
+    session = AgentSession(
+        room=ctx.room,
+        stt=agent.stt,
+        tts=agent.tts,
+        turn_detection="stt",
+        min_endpointing_delay=0.2,
+    )
+
+    await session.start()
+
+    # Force first speech
+    await session.generate_reply(
+        instructions="వినిపిస్తుందా? నేను తెలుగు భావిక్. మాట్లాడండి."
+    )
+
+
+if __name__ == "__main__":
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
