@@ -1,7 +1,6 @@
 import os
 import logging
 from dotenv import load_dotenv
-
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -10,12 +9,19 @@ from livekit.agents import (
     cli,
 )
 from livekit.plugins import sarvam
+from flask import Flask
+from flask_cors import CORS  # This is for CORS support in Flask
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-agent")
 
+# Flask App Setup with CORS
+app = Flask(__name__)
+
+# Allow only requests from your frontend (Vercel URL)
+CORS(app, resources={r"/*": {"origins": "https://your-frontend.vercel.app"}})
 
 class TeluguVoiceAgent(Agent):
     def __init__(self):
@@ -58,4 +64,8 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
+    # Run the agent
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+
+    # For Flask server (if you use it, e.g., to serve API or for testing)
+    app.run(debug=True, host="0.0.0.0", port=5000)  # Adjust as needed
