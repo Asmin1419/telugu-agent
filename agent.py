@@ -1,71 +1,65 @@
-import os
 import logging
 from dotenv import load_dotenv
-from livekit.agents import (
-    Agent,
-    AgentSession,
-    JobContext,
-    WorkerOptions,
-    cli,
-)
-from livekit.plugins import sarvam
-from flask import Flask
-from flask_cors import CORS  # This is for CORS support in Flask
+from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents.voice import Agent, AgentSession
+from livekit.plugins import openai, sarvam
 
 load_dotenv()
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voice-agent")
+logger.setLevel(logging.INFO)
 
-# Flask App Setup with CORS
-app = Flask(__name__)
-
-# Allow only requests from your frontend (Vercel URL)
-CORS(app, resources={r"/*": {"origins": "https://your-frontend.vercel.app"}})
-
-class TeluguVoiceAgent(Agent):
-    def __init__(self):
+class VoiceAgent(Agent):
+    def __init__(self) -> None:
         super().__init__(
-            instructions="You are Bhavik, a Telugu voice assistant. Always respond in Telugu in a friendly way."
+            instructions="""
+                You are a helpful Telugu voice assistant named Aditya.
+                When someone greets you, respond warmly in Telugu.
+                Always be friendly and helpful.
+            """,
+            
+            stt=sarvam.STT(
+                language="te-IN",
+                model="saaras:v3",
+                mode="transcribe",
+                flush_signal=True
+            ),
+            
+            llm=openai.LLM(model="gpt-4o"),
+            
+            tts=sarvam.TTS(
+                target_language_code="te-IN",
+                model="bulbul:v3",
+                speaker="aditya"
+            ),
         )
-
-        # Sarvam STT
-        self.stt = sarvam.STT(
-            api_key=os.getenv("SARVAM_API_KEY"),
-            language="te-IN",
-        )
-
-        # Sarvam TTS
-        self.tts = sarvam.TTS(
-            api_key=os.getenv("SARVAM_API_KEY"),
-            voice="telugu_female",
-        )
-
+    
+    async def on_user_speech_committed(self, message):
+        logger.info(f"🎤 User said: {message.content}")
+        
+    async def on_agent_speech_committed(self, message):
+        logger.info(f"🔊 Agent responding: {message.content}")
+    
+    async def on_enter(self):
+        """Called when user joins"""
+        logger.info("Agent entered, generating greeting")
+        # Fix: Use generate_reply() without arguments
+        await self.session.generate_reply()
+        
+        # OR use say() for a specific message:
+        # await self.session.say("నమస్కారం! నేను ఆదిత్య, మీ వాయిస్ అసిస్టెంట్. ఈరోజు మీకు ఎలా సహాయం చేయగలను?")
 
 async def entrypoint(ctx: JobContext):
-    logger.info(f"🔥 Job started for room: {ctx.room.name}")
-
-    agent = TeluguVoiceAgent()
-
+    logger.info(f"User connected to room: {ctx.room.name}")
+    
     session = AgentSession(
-        room=ctx.room,
-        stt=agent.stt,
-        tts=agent.tts,
         turn_detection="stt",
-        min_endpointing_delay=0.2,
+        min_endpointing_delay=0.07
     )
-
-    await session.start()
-
-    # Force first speech
-    await session.generate_reply(
-        instructions="వినిపిస్తుందా? నేను తెలుగు భావిక్. మాట్లాడండి."
+    
+    await session.start(
+        agent=VoiceAgent(),
+        room=ctx.room
     )
-
 
 if __name__ == "__main__":
-    # Run the agent
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
-
-    # For Flask server (if you use it, e.g., to serve API or for testing)
-    app.run(debug=True, host="0.0.0.0", port=5000)  # Adjust as needed
